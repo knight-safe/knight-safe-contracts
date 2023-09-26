@@ -61,9 +61,7 @@ contract UniswapSwapParameterChecker is IParameterChecker {
     function dispatch(bytes1 commandType, bytes calldata inputs) internal pure returns (address[] memory rv) {
         uint256 command = uint8(commandType & Commands.COMMAND_TYPE_MASK);
 
-        if (command == Commands.V3_SWAP_EXACT_IN
-            || command == Commands.V2_SWAP_EXACT_IN
-        ) {
+        if (command == Commands.V3_SWAP_EXACT_IN) {
             // equivalent: abi.decode(inputs, (address, uint256, uint256, bytes, bool))
             address recipient;
             bool payerIsUser;
@@ -72,7 +70,7 @@ contract UniswapSwapParameterChecker is IParameterChecker {
                 payerIsUser := calldataload(add(inputs.offset, 0x80))
             }
             bytes calldata path = toBytes(inputs, 3);
-            (address token0, address token1) = toPathTokens(path);
+            (address token0, address token1) = toPathTokensV3(path);
             if (!payerIsUser) {
                 rv = new address[](2);
                 rv[0] = recipient;
@@ -87,9 +85,7 @@ contract UniswapSwapParameterChecker is IParameterChecker {
                 rv[2] = token1;
             }
             return rv;
-        } else if (command == Commands.V3_SWAP_EXACT_OUT
-            || command == Commands.V2_SWAP_EXACT_OUT
-        ) {
+        } else if (command == Commands.V2_SWAP_EXACT_IN) {
             // equivalent: abi.decode(inputs, (address, uint256, uint256, bytes, bool))
             address recipient;
             bool payerIsUser;
@@ -98,7 +94,55 @@ contract UniswapSwapParameterChecker is IParameterChecker {
                 payerIsUser := calldataload(add(inputs.offset, 0x80))
             }
             bytes calldata path = toBytes(inputs, 3);
-            (address token0, address token1) = toPathTokens(path);
+            (address token0, address token1) = toPathTokensV2(path);
+            if (!payerIsUser) {
+                rv = new address[](2);
+                rv[0] = recipient;
+                rv[1] = token1;
+            } else if (recipient == address(2)) {
+                rv = new address[](1);
+                rv[0] = token0;
+            } else {
+                rv = new address[](3);
+                rv[0] = recipient;
+                rv[1] = token0;
+                rv[2] = token1;
+            }
+            return rv;
+        } else if (command == Commands.V3_SWAP_EXACT_OUT) {
+            // equivalent: abi.decode(inputs, (address, uint256, uint256, bytes, bool))
+            address recipient;
+            bool payerIsUser;
+            assembly {
+                recipient := calldataload(inputs.offset)
+                payerIsUser := calldataload(add(inputs.offset, 0x80))
+            }
+            bytes calldata path = toBytes(inputs, 3);
+            (address token0, address token1) = toPathTokensV3(path);
+            if (!payerIsUser) {
+                rv = new address[](2);
+                rv[0] = recipient;
+                rv[1] = token0;
+            } else if (recipient == address(2)) {
+                rv = new address[](1);
+                rv[0] = token1;
+            } else {
+                rv = new address[](3);
+                rv[0] = recipient;
+                rv[1] = token0;
+                rv[2] = token1;
+            }
+            return rv;
+        }else if (command == Commands.V2_SWAP_EXACT_OUT) {
+            // equivalent: abi.decode(inputs, (address, uint256, uint256, bytes, bool))
+            address recipient;
+            bool payerIsUser;
+            assembly {
+                recipient := calldataload(inputs.offset)
+                payerIsUser := calldataload(add(inputs.offset, 0x80))
+            }
+            bytes calldata path = toBytes(inputs, 3);
+            (address token0, address token1) = toPathTokensV2(path);
             if (!payerIsUser) {
                 rv = new address[](2);
                 rv[0] = recipient;
@@ -188,12 +232,19 @@ contract UniswapSwapParameterChecker is IParameterChecker {
     }
 
 
-    function toPathTokens(bytes calldata _bytes) internal pure returns (address token0, address token1) {
+    function toPathTokensV3(bytes calldata _bytes) internal pure returns (address token0, address token1) {
         assembly {
             let firstWord := calldataload(_bytes.offset)
             token0 := shr(96, firstWord)
-            // fee := and(shr(72, firstWord), 0xffffff)
             token1 := shr(96, calldataload(sub(add(_bytes.offset, _bytes.length), 20)))
+        }
+    }
+
+    function toPathTokensV2(bytes calldata _bytes) internal pure returns (address token0, address token1) {
+        assembly {
+            let firstWord := calldataload(_bytes.offset)
+            token0 := calldataload(_bytes.offset)
+            token1 := calldataload(add(_bytes.offset, shl(5, sub(_bytes.length, 1))))
         }
     }
 
